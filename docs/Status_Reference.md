@@ -187,6 +187,14 @@ The following information is available in
 - `last_stats.<statistics_name>`: Statistics information on the
   micro-controller connection.
 
+# motion_report
+
+The following information is available in the `motion_report` object
+(this object is automatically available if any stepper config section
+is defined):
+- `position`: The requested toolhead position interpolated to the
+  current time.
+
 # output_pin
 
 The following information is available in

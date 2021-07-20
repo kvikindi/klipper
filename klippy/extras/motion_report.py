@@ -84,11 +84,18 @@ class DumpTrapQ:
         return (move.start_x + move.x_r * dist, move.start_y + move.y_r * dist,
                 move.start_z + move.z_r * dist)
 
+STATUS_REFRESH_TIME = 0.250
+
 class PrinterMotionReport:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.steppers = {}
         self.trapqs = {}
+        # get_status information
+        self.next_status_time = 0.
+        gcode = self.printer.lookup_object('gcode')
+        self.last_status = {'position': gcode.Coord(0., 0., 0., 0.)}
+        # Register handlers
         self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:shutdown", self._shutdown)
     def register_stepper(self, config, mcu_stepper):
@@ -141,6 +148,31 @@ class PrinterMotionReport:
                          , shutdown_time, pos)
     def _shutdown(self):
         self.printer.get_reactor().register_callback(self._dump_shutdown)
+    # Status reporting
+    def get_status(self, eventtime):
+        if eventtime < self.next_status_time or not self.trapqs:
+            return self.last_status
+        self.next_status_time = eventtime + STATUS_REFRESH_TIME
+        xyzpos = (0., 0., 0.)
+        epos = (0.,)
+        # Calculate current requested toolhead position
+        mcu = self.printer.lookup_object('mcu')
+        print_time = mcu.estimated_print_time(eventtime)
+        pos = self.trapqs['toolhead'].get_trapq_position(print_time)
+        if pos is not None:
+            xyzpos = pos[:3]
+        # Calculate requested position of currently active extruder
+        toolhead = self.printer.lookup_object('toolhead')
+        ehandler = self.trapqs.get(toolhead.get_extruder().get_name())
+        if ehandler is not None:
+            pos = ehandler.get_trapq_position(print_time)
+            if pos is not None:
+                epos = (pos[0],)
+        # Report status
+        self.last_status = {
+            'position': toolhead.Coord(*(xyzpos + epos))
+        }
+        return self.last_status
 
 def load_config(config):
     return PrinterMotionReport(config)
